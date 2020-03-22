@@ -363,6 +363,9 @@ def handle(_name, cfg, cloud, log, _args):
 
     defvals = [None, None, "auto", def_mnt_opts, "0", "2"]
     defvals = cfg.get("mount_default_fields", defvals)
+    mount_selinux_default_options = {"recuse": False, "force": False, "context": None}
+    mounts_selinux_options = cfg.get("mount_selinux_options", {})
+
 
     # these are our default set of mounts
     defmnts = [["ephemeral0", "/mnt", "auto", defvals[3], "0", "2"],
@@ -543,5 +546,17 @@ def handle(_name, cfg, cloud, log, _args):
         except util.ProcessExecutionError:
             log.warning(fmt, "FAIL")
             util.logexc(log, fmt, "FAIL")
+
+    for line in [line for line in actlist if line[1].startswith('/')]:
+        dir = line[1]
+        options = [option.strip().split('=', 1)[0] for option in line[3].split(',')]
+        if 'context' not in options and 'ro' not in options:
+            mount_selinux_options = mount_selinux_default_options.copy()
+            if dir in mounts_selinux_options:
+                mount_selinux_options.update(mounts_selinux_options[dir])
+            util.create_selinux_initial_fs_label(dir,
+                                                 recursive=mount_selinux_options['recuse'],
+                                                 forced=mount_selinux_options['force'],
+                                                 context=mount_selinux_options['context'])
 
 # vi: ts=4 expandtab

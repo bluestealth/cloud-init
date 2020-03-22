@@ -175,6 +175,69 @@ def fully_decoded_payload(part):
     return cte_payload
 
 
+def create_selinux_initial_fs_label(mountpoint, recursive=False, forced=False, context=None):
+    unlabeled_types = ['unlabeled_t', 'file_t']
+    mountpoint = os.path.realpath(mountpoint)
+
+    try:
+        selinux = importer.import_module('selinux')
+    except ImportError:
+        return
+
+    LOG.debug("Restoring selinux mode for mount %s (recursive=%s) (forced=%s) (context=%s)",
+              mountpoint, recursive, forced, context)
+
+    if selinux.is_selinux_enabled() and os.path.ismount(mountpoint):
+        try:
+            file_context = selinux.getfilecon(mountpoint)
+            selinux_context = selinux.context_new(file_context[1])
+            selinux_type = selinux.context_type_get(selinux_context)
+        except OSError as e:
+            LOG.warning('Failed get current SELinux context for %s, maybe badness? %s',
+                        mountpoint, e)
+            return
+
+        if (selinux_type not in unlabeled_types and not os.path.lexists('/.autorelabel')) or forced:
+            if context is not None:
+                new_selinux_context = selinux.context_new(context)
+                if new_selinux_context is None:
+                    LOG.warning('failed to create SELinux context %s for mount %s using %s policy',
+                                context, mountpoint, selinux.selinux_getpolicytype()[1])
+                    return
+                try:
+                    selinux.setfilecon(mountpoint, new_selinux_context)
+                except OSError as e:
+                    LOG.warning('failed to set label on mountpoint %s maybe badness? %s',
+                                mountpoint, e)
+                if recursive:
+                    for root, dirs, files in os.walk(mountpoint):
+                        for dir in dirs:
+                            try:
+                                selinux.setfilecon(os.path.join(root, dir), new_selinux_context)
+                            except OSError as e:
+                                LOG.warning('failed to set label on directory %s maybe badness? %s',
+                                            dir, e)
+                        for file in files:
+                            try:
+                                selinux.lsetfilecon(os.path.join(root, file), new_selinux_context)
+                            except OSError as e:
+                                LOG.warning('failed to set label on directory %s maybe badness? %s',
+                                            file, e)
+            else:
+                if recursive:
+                    try:
+                        selinux.restorecon(mountpoint, recursive=True, force=forced)
+                    except OSError as e:
+                        LOG.warning('restorecon failed on %s,%s,%s maybe badness? %s',
+                                    mountpoint, recursive, forced, e)
+                else:
+                    try:
+                        selinux.selinux_setfilecon_default(mountpoint)
+                    except OSError as e:
+                        LOG.warning('failed to set label on mountpoint %s maybe badness? %s',
+                                    mountpoint, e)
+
+
 # Path for DMI Data
 DMI_SYS_PATH = "/sys/class/dmi/id"
 

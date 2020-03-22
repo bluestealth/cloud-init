@@ -38,6 +38,17 @@ mounts:
 mount_default_fields: [ None, None, "auto", "defaults,nofail", "0", "2" ]
 
 
+# mounts_selinux
+# This should be a dictionary of mountpoints each containing a dictionary of options to set.
+# default is to use default context from policy, not to recurse past root inode, and not relabel
+# if existing labels exist
+mounts_selinux:
+   '/opt/data':
+      context: "system_u:object_r:var_t:s0"
+      recurse: true
+      force: false
+
+
 # swap can also be set up by the 'mounts' module
 # default is to not create any swap files, because 'size' is set to 0
 swap:
